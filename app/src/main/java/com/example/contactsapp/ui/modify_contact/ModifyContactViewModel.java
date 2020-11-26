@@ -104,7 +104,6 @@ public class ModifyContactViewModel extends ViewModel {
                 .withValueBackReference(ContactsContract.RawContacts.Data.RAW_CONTACT_ID, 0)
                 .withValue(ContactsContract.RawContacts.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
                 .withValue(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME, name)
-                .withValue(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME, name)
                 .build());
 
         // insert phone number

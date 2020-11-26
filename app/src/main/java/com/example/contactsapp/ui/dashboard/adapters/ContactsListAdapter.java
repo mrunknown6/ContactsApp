@@ -73,6 +73,10 @@ public class ContactsListAdapter extends RecyclerView.Adapter<ContactsListAdapte
             contact = differ.getCurrentList().get(getAdapterPosition());
             tvFirstNameLastName.setText(contact.getFirstName().concat(" ").concat(contact.getLastName()));
             itemView.setOnClickListener(v -> contactsListClickListener.onContactClick(getAdapterPosition()));
+            itemView.setOnLongClickListener(v -> {
+                contactsListClickListener.onContactLongClick(getAdapterPosition());
+                return true;
+            });
         }
     }
 

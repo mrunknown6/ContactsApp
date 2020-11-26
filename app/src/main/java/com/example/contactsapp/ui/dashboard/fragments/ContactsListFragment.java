@@ -1,10 +1,12 @@
 package com.example.contactsapp.ui.dashboard.fragments;
 
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.os.Bundle;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.ItemTouchHelper;
@@ -22,6 +24,7 @@ import com.example.contactsapp.db.Image;
 import com.example.contactsapp.db.ImageDatabase;
 import com.example.contactsapp.ui.authentication.viewmodel.DashboardViewModelFactory;
 import com.example.contactsapp.ui.dashboard.adapters.ContactsListAdapter;
+import com.example.contactsapp.ui.dashboard.adapters.ContactsListClickListener;
 import com.example.contactsapp.ui.dashboard.models.ContactModel;
 import com.example.contactsapp.ui.dashboard.viewmodel.DashboardViewModel;
 import com.example.contactsapp.ui.modify_contact.ModifyContactActivity;
@@ -76,7 +79,6 @@ public class ContactsListFragment extends Fragment {
         // setup
         setupRecyclerView(view);
         setupObservers();
-        setupItemTouchHelper(view);
 
         // fetch contacts
         viewModel.fetchContacts();
@@ -86,7 +88,9 @@ public class ContactsListFragment extends Fragment {
     @Override
     public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+
         if (resultCode == RESULT_OK) {
+            // if we updated a contact
             if (requestCode == REQUEST_CODE_UPDATE) {
                 ContactModel contactModel = data.getExtras().getParcelable("contact");
                 if (contactModel != null) {
@@ -95,7 +99,10 @@ public class ContactsListFragment extends Fragment {
                     adapter.differ.submitList(viewModel.getContacts().getValue());
                     adapter.notifyItemChanged(position);
                 }
-            } else if (requestCode == REQUEST_CODE_ADD) {
+            }
+            
+            // if we added a new contact
+            else if (requestCode == REQUEST_CODE_ADD) {
                 String phoneNumber = data.getExtras().getString("phone_number");
                 viewModel.fetchContacts();
 
@@ -111,65 +118,38 @@ public class ContactsListFragment extends Fragment {
         }
     }
 
-    private void setupItemTouchHelper(View view) {
-        ItemTouchHelper itemTouchHelper = new ItemTouchHelper(
-                new ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP | ItemTouchHelper.DOWN,
-                        ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT) {
-                    @Override
-                    public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder, @NonNull RecyclerView.ViewHolder target) {
-                        return true;
-                    }
-
-                    @Override
-                    public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) {
-                        int position = viewHolder.getAdapterPosition();
-                        ContactModel contactModel = adapter.differ.getCurrentList().get(position);
-                        AtomicReference<Image> image = new AtomicReference<>();
-                        new Thread(() -> {
-                            try {
-                                image.set(ImageDatabase.newInstance(getActivity().getApplicationContext()).getImageDao().getImage(contactModel.getId()));
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                        }).start();
-
-                        viewModel.deleteContact(getActivity().getContentResolver(), contactModel);
-                        adapter.notifyItemRemoved(position);
-                        Snackbar.make(view, "Successfully deleted contact", Snackbar.LENGTH_LONG)
-                                .setAction("Undo", v -> {
-                                    viewModel.addContact(getActivity().getContentResolver(), contactModel, position);
-                                    viewModel.fetchContacts();
-                                    rvContactsList.scrollToPosition(position);
-
-                                    new Thread(() -> {
-                                        try {
-                                            // get new id from re-inserting the contact
-                                            String newId = viewModel.getId(getActivity().getContentResolver(), contactModel.getPhoneNumber());
-
-                                            ImageDatabase.newInstance(getActivity().getApplicationContext()).getImageDao().insert(new Image(newId, image.get().byteArray));
-                                        } catch (Exception e) {
-                                            e.printStackTrace();
-                                        }
-                                    }).start();
-                                }).show();
-                    }
-                }
-        );
-        itemTouchHelper.attachToRecyclerView(rvContactsList);
-    }
-
     private void setupRecyclerView(View view) {
         rvContactsList = view.findViewById(R.id.rvContactsList);
         rvContactsList.setLayoutManager(new LinearLayoutManager(getActivity()));
         rvContactsList.setHasFixedSize(true);
-        adapter = new ContactsListAdapter(adapterPosition -> {
-            Intent intent = new Intent(getActivity(), ModifyContactActivity.class);
-            intent.putExtra("operation", "update");
-            intent.putExtra("contact", viewModel.getContacts().getValue().get(adapterPosition));
-            position = adapterPosition;
-            startActivityForResult(intent, REQUEST_CODE_UPDATE);
-        },
-                );
+        adapter = new ContactsListAdapter(new ContactsListClickListener() {
+            @Override
+            public void onContactClick(int adapterPosition) {
+                Intent intent = new Intent(getActivity(), ModifyContactActivity.class);
+                intent.putExtra("operation", "update");
+                intent.putExtra("contact", viewModel.getContacts().getValue().get(adapterPosition));
+                position = adapterPosition;
+                startActivityForResult(intent, REQUEST_CODE_UPDATE);
+            }
+
+            @Override
+            public void onContactLongClick(int adapterPosition) {
+                ContactModel contactModel = adapter.differ.getCurrentList().get(adapterPosition);
+                new AlertDialog.Builder(getContext())
+                        .setTitle("Delete contact?")
+                        .setMessage("Are you sure you want to delete this contact?")
+                        .setPositiveButton("Yes", (dialog, which) -> {
+                            viewModel.deleteContact(getActivity().getContentResolver(), contactModel);
+                            adapter.notifyItemRemoved(adapterPosition);
+                            dialog.cancel();
+                            Toast.makeText(getContext(), "WTF", Toast.LENGTH_SHORT).show();
+                        })
+                        .setNegativeButton("No", (dialog, which) -> {
+                            dialog.cancel();
+                        }).show();
+            }
+        }
+        );
         rvContactsList.setAdapter(adapter);
     }
 
